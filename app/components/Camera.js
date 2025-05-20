@@ -2,7 +2,13 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  writeBatch,
+  doc,
+} from "firebase/firestore";
 import { app, db } from "../../firebase/firebase-init";
 
 const Camera = ({ onClose }) => {
@@ -80,14 +86,10 @@ const Camera = ({ onClose }) => {
 
   const performOCR = async (imageSrc) => {
     try {
-      // Compress image before OCR
       const compressedImage = await compressImage(imageSrc);
-
-      // Convert to blob with reduced quality
       const imageResponse = await fetch(compressedImage);
       const blob = await imageResponse.blob();
 
-      // Create FormData with optimized settings
       const formData = new FormData();
       formData.append("apikey", "K89690044888957");
       formData.append("language", "eng");
@@ -96,9 +98,7 @@ const Camera = ({ onClose }) => {
       formData.append("detectOrientation", "true");
       formData.append("scale", "true");
       formData.append("OCREngine", "2");
-      formData.append("filetype", "jpg");
 
-      // Add timeout to prevent hanging requests
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -113,10 +113,6 @@ const Camera = ({ onClose }) => {
 
       if (result.IsErroredOnProcessing) {
         throw new Error(result.ErrorMessage);
-      }
-
-      if (!result.ParsedResults || result.ParsedResults.length === 0) {
-        throw new Error("No text detected in the image");
       }
 
       return result.ParsedResults[0].ParsedText;
@@ -136,12 +132,14 @@ const Camera = ({ onClose }) => {
     setError(null);
 
     try {
-      console.log("Compressing image for storage...");
+      // Compress image for storage
       const compressedImage = await compressImage(imgSrc);
-      console.log("Image compressed successfully");
 
-      console.log("Starting Firestore save...");
-      const docRef = await addDoc(collection(db, "receipts"), {
+      // Use batch write for better performance
+      const batch = writeBatch(db);
+      const docRef = doc(collection(db, "receipts"));
+
+      batch.set(docRef, {
         imageData: compressedImage,
         originalImageData: imgSrc,
         price: confirmedPrice,
@@ -150,12 +148,13 @@ const Camera = ({ onClose }) => {
         imageUrl: `data:image/jpeg;base64,${compressedImage.split(",")[1]}`,
         originalImageUrl: `data:image/jpeg;base64,${imgSrc.split(",")[1]}`,
       });
-      console.log("Document saved with ID:", docRef.id);
 
+      await batch.commit();
       onClose();
     } catch (firebaseError) {
       console.error("Firebase Error:", firebaseError);
       setError(`Error saving to database: ${firebaseError.message}`);
+    } finally {
       setIsProcessing(false);
     }
   };
