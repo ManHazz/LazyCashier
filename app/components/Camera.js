@@ -37,74 +37,78 @@ const Camera = ({ onClose }) => {
     document.body.removeChild(link);
   };
 
-  const compressImage = async (imageSrc, quality = 0.6) => {
-    return new Promise((resolve, reject) => {
+  const compressImage = async (imageSrc) => {
+    return new Promise((resolve) => {
       const img = new Image();
       img.src = imageSrc;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
-        // Calculate new dimensions while maintaining aspect ratio
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
         let width = img.width;
         let height = img.height;
-        const maxDimension = 1200; // Maximum dimension for the compressed image
 
-        if (width > height && width > maxDimension) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else if (height > maxDimension) {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
         }
 
         canvas.width = width;
         canvas.height = height;
-
-        // Draw image with new dimensions
+        const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, width, height);
-
-        // Convert to base64 with compression
-        const compressedImage = canvas.toDataURL("image/jpeg", quality);
-        resolve(compressedImage);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
       };
-      img.onerror = reject;
+    });
+  };
+
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
     });
   };
 
   const performOCR = async (imageSrc) => {
     try {
-      // Convert the image to a blob first
-      const imageResponse = await fetch(imageSrc);
+      // Compress image before OCR
+      const compressedImage = await compressImage(imageSrc);
+
+      // Convert to blob with reduced quality
+      const imageResponse = await fetch(compressedImage);
       const blob = await imageResponse.blob();
 
-      // Create a new FileReader
-      const reader = new FileReader();
-
-      // Convert blob to base64
-      const base64Promise = new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-
-      const base64Image = await base64Promise;
-
+      // Create FormData with optimized settings
       const formData = new FormData();
       formData.append("apikey", "K89690044888957");
       formData.append("language", "eng");
       formData.append("isOverlayRequired", "false");
-      formData.append("base64Image", base64Image);
+      formData.append("base64Image", await blobToBase64(blob));
       formData.append("detectOrientation", "true");
       formData.append("scale", "true");
       formData.append("OCREngine", "2");
       formData.append("filetype", "jpg");
 
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
       const result = await ocrResponse.json();
 
       if (result.IsErroredOnProcessing) {
