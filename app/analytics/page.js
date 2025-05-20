@@ -14,11 +14,13 @@ import Link from "next/link";
 import ErrorBoundary from "../components/ErrorBoundary";
 
 export default function AnalyticsPage() {
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [totalTransactions, setTotalTransactions] = useState(0);
-  const [totalExpenses, setTotalExpenses] = useState(0);
-  const [totalProfit, setTotalProfit] = useState(0);
-  const [recentReceipts, setRecentReceipts] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState({
+    totalRevenue: 0,
+    totalTransactions: 0,
+    totalExpenses: 0,
+    totalProfit: 0,
+    recentReceipts: [],
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [newExpense, setNewExpense] = useState("");
@@ -28,59 +30,72 @@ export default function AnalyticsPage() {
     setLoading(true);
     setError(null);
 
-    // Use real-time listeners for receipts
-    const receiptsUnsubscribe = onSnapshot(
-      query(collection(db, "receipts"), orderBy("timestamp", "desc")),
-      (snapshot) => {
-        let revenue = 0;
-        const receipts = [];
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          revenue += data.price || 0;
-          receipts.push({
-            id: doc.id,
-            ...data,
-          });
-        });
-
-        setTotalRevenue(revenue);
-        setTotalTransactions(receipts.length);
-        setRecentReceipts(receipts.slice(0, 2));
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Error fetching receipts:", err);
-        setError("Failed to load receipts data");
-        setLoading(false);
-      }
+    // Combine queries into a single listener for better performance
+    const receiptsQuery = query(
+      collection(db, "receipts"),
+      orderBy("timestamp", "desc")
+    );
+    const expensesQuery = query(
+      collection(db, "expenses"),
+      orderBy("timestamp", "desc")
     );
 
-    // Use real-time listener for expenses
-    const expensesUnsubscribe = onSnapshot(
-      query(collection(db, "expenses"), orderBy("timestamp", "desc")),
-      (snapshot) => {
-        let expenses = 0;
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          expenses += data.amount || 0;
-        });
-
-        setTotalExpenses(expenses);
-        setTotalProfit(totalRevenue - expenses);
-      },
-      (err) => {
-        console.error("Error fetching expenses:", err);
-        setError("Failed to load expenses data");
-      }
-    );
-
-    // Cleanup listeners on unmount
-    return () => {
-      receiptsUnsubscribe();
-      expensesUnsubscribe();
-    };
-  }, [totalRevenue]); // Only depend on totalRevenue for profit calculation
+    // Use Promise.all to fetch both collections simultaneously
+    Promise.all([
+      new Promise((resolve) => {
+        const unsubscribe = onSnapshot(
+          receiptsQuery,
+          (snapshot) => {
+            let revenue = 0;
+            const receipts = [];
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              revenue += data.price || 0;
+              receipts.push({
+                id: doc.id,
+                ...data,
+              });
+            });
+            resolve({ revenue, receipts });
+          },
+          (err) => {
+            console.error("Error fetching receipts:", err);
+            setError("Failed to load receipts data");
+            resolve({ revenue: 0, receipts: [] });
+          }
+        );
+        return unsubscribe;
+      }),
+      new Promise((resolve) => {
+        const unsubscribe = onSnapshot(
+          expensesQuery,
+          (snapshot) => {
+            let expenses = 0;
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              expenses += data.amount || 0;
+            });
+            resolve({ expenses });
+          },
+          (err) => {
+            console.error("Error fetching expenses:", err);
+            setError("Failed to load expenses data");
+            resolve({ expenses: 0 });
+          }
+        );
+        return unsubscribe;
+      }),
+    ]).then(([{ revenue, receipts }, { expenses }]) => {
+      setAnalyticsData({
+        totalRevenue: revenue,
+        totalTransactions: receipts.length,
+        totalExpenses: expenses,
+        totalProfit: revenue - expenses,
+        recentReceipts: receipts.slice(0, 2),
+      });
+      setLoading(false);
+    });
+  }, []); // Remove totalRevenue dependency
 
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
@@ -185,7 +200,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                RM {totalRevenue.toFixed(2)}
+                RM {analyticsData.totalRevenue.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
@@ -213,7 +228,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                RM {totalExpenses.toFixed(2)}
+                RM {analyticsData.totalExpenses.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
@@ -241,7 +256,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                RM {totalProfit.toFixed(2)}
+                RM {analyticsData.totalProfit.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
@@ -269,7 +284,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {totalTransactions}
+                {analyticsData.totalTransactions}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
@@ -330,7 +345,7 @@ export default function AnalyticsPage() {
               </Link>
             </div>
             <div className="space-y-4">
-              {recentReceipts.map((receipt) => (
+              {analyticsData.recentReceipts.map((receipt) => (
                 <div
                   key={receipt.id}
                   className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg"

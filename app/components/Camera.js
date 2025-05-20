@@ -1,4 +1,4 @@
-"use client";
+"use client"; /*  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
@@ -15,6 +15,7 @@ const Camera = ({ onClose }) => {
   const [detectedPrice, setDetectedPrice] = useState(null);
   const [showPriceConfirmation, setShowPriceConfirmation] = useState(false);
   const [confirmedPrice, setConfirmedPrice] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     // Check if Firebase is properly initialized
@@ -37,7 +38,7 @@ const Camera = ({ onClose }) => {
     document.body.removeChild(link);
   };
 
-  const compressImage = async (imageSrc) => {
+  const compressImage = useCallback(async (imageSrc) => {
     return new Promise((resolve) => {
       const img = new Image();
       img.src = imageSrc;
@@ -67,7 +68,7 @@ const Camera = ({ onClose }) => {
         resolve(canvas.toDataURL("image/jpeg", 0.7));
       };
     });
-  };
+  }, []);
 
   const blobToBase64 = (blob) => {
     return new Promise((resolve, reject) => {
@@ -78,53 +79,51 @@ const Camera = ({ onClose }) => {
     });
   };
 
-  const performOCR = async (imageSrc) => {
-    try {
-      // Compress image before OCR
-      const compressedImage = await compressImage(imageSrc);
+  const performOCR = useCallback(
+    async (imageSrc) => {
+      try {
+        const compressedImage = await compressImage(imageSrc);
+        const imageResponse = await fetch(compressedImage);
+        const blob = await imageResponse.blob();
 
-      // Convert to blob with reduced quality
-      const imageResponse = await fetch(compressedImage);
-      const blob = await imageResponse.blob();
+        const formData = new FormData();
+        formData.append("apikey", "K89690044888957");
+        formData.append("language", "eng");
+        formData.append("isOverlayRequired", "false");
+        formData.append("base64Image", await blobToBase64(blob));
+        formData.append("detectOrientation", "true");
+        formData.append("scale", "true");
+        formData.append("OCREngine", "2");
+        formData.append("filetype", "jpg");
 
-      // Create FormData with optimized settings
-      const formData = new FormData();
-      formData.append("apikey", "K89690044888957");
-      formData.append("language", "eng");
-      formData.append("isOverlayRequired", "false");
-      formData.append("base64Image", await blobToBase64(blob));
-      formData.append("detectOrientation", "true");
-      formData.append("scale", "true");
-      formData.append("OCREngine", "2");
-      formData.append("filetype", "jpg");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      // Add timeout to prevent hanging requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
 
-      const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
+        clearTimeout(timeoutId);
+        const result = await ocrResponse.json();
 
-      clearTimeout(timeoutId);
-      const result = await ocrResponse.json();
+        if (result.IsErroredOnProcessing) {
+          throw new Error(result.ErrorMessage);
+        }
 
-      if (result.IsErroredOnProcessing) {
-        throw new Error(result.ErrorMessage);
+        if (!result.ParsedResults || result.ParsedResults.length === 0) {
+          throw new Error("No text detected in the image");
+        }
+
+        return result.ParsedResults[0].ParsedText;
+      } catch (error) {
+        console.error("OCR Error:", error);
+        throw error;
       }
-
-      if (!result.ParsedResults || result.ParsedResults.length === 0) {
-        throw new Error("No text detected in the image");
-      }
-
-      return result.ParsedResults[0].ParsedText;
-    } catch (error) {
-      console.error("OCR Error:", error);
-      throw error;
-    }
-  };
+    },
+    [compressImage]
+  );
 
   const handlePriceConfirmation = async () => {
     if (!confirmedPrice || isNaN(confirmedPrice) || confirmedPrice <= 0) {
@@ -136,27 +135,32 @@ const Camera = ({ onClose }) => {
     setError(null);
 
     try {
-      console.log("Compressing image for storage...");
+      setIsUploading(true);
       const compressedImage = await compressImage(imgSrc);
-      console.log("Image compressed successfully");
 
-      console.log("Starting Firestore save...");
-      const docRef = await addDoc(collection(db, "receipts"), {
+      // Optimize the data being sent to Firestore
+      const receiptData = {
         imageData: compressedImage,
-        originalImageData: imgSrc,
         price: confirmedPrice,
         timestamp: serverTimestamp(),
         ocrText: detectedText,
         imageUrl: `data:image/jpeg;base64,${compressedImage.split(",")[1]}`,
-        originalImageUrl: `data:image/jpeg;base64,${imgSrc.split(",")[1]}`,
-      });
+      };
+
+      // Remove original image data to reduce payload size
+      delete receiptData.originalImageData;
+      delete receiptData.originalImageUrl;
+
+      const docRef = await addDoc(collection(db, "receipts"), receiptData);
       console.log("Document saved with ID:", docRef.id);
 
       onClose();
     } catch (firebaseError) {
       console.error("Firebase Error:", firebaseError);
       setError(`Error saving to database: ${firebaseError.message}`);
+    } finally {
       setIsProcessing(false);
+      setIsUploading(false);
     }
   };
 
@@ -171,10 +175,6 @@ const Camera = ({ onClose }) => {
     if (webcamRef.current) {
       const imageSrc = webcamRef.current.getScreenshot();
       setImgSrc(imageSrc);
-
-      // Download original quality image immediately
-      downloadImage(imageSrc);
-
       setIsProcessing(true);
       setError(null);
       setDetectedText(null);
@@ -182,18 +182,15 @@ const Camera = ({ onClose }) => {
       setConfirmedPrice(null);
 
       try {
-        console.log("Starting OCR process...");
         const text = await performOCR(imageSrc);
-        console.log("OCR Text:", text);
         setDetectedText(text);
 
-        // Extract price using improved regex patterns
         const pricePatterns = [
-          /RM\s*(\d+\.?\d*)/i, // RM followed by numbers
-          /(\d+\.?\d*)\s*RM/i, // Numbers followed by RM
-          /Total\s*:?\s*RM\s*(\d+\.?\d*)/i, // Total: RM numbers
-          /Total\s*:?\s*(\d+\.?\d*)/i, // Total: numbers
-          /(\d+\.?\d*)/, // Any number as fallback
+          /RM\s*(\d+\.?\d*)/i,
+          /(\d+\.?\d*)\s*RM/i,
+          /Total\s*:?\s*RM\s*(\d+\.?\d*)/i,
+          /Total\s*:?\s*(\d+\.?\d*)/i,
+          /(\d+\.?\d*)/,
         ];
 
         let price = null;
@@ -201,12 +198,9 @@ const Camera = ({ onClose }) => {
           const match = text.match(pattern);
           if (match) {
             price = parseFloat(match[1]);
-            console.log("Price detected using pattern:", pattern);
             break;
           }
         }
-
-        console.log("Detected price:", price);
 
         if (!price) {
           setError(
@@ -219,14 +213,14 @@ const Camera = ({ onClose }) => {
         setDetectedPrice(price);
         setConfirmedPrice(price);
         setShowPriceConfirmation(true);
-        setIsProcessing(false);
       } catch (err) {
         console.error("OCR Error:", err);
         setError("Error processing image: " + err.message);
+      } finally {
         setIsProcessing(false);
       }
     }
-  }, [webcamRef, onClose, isFirebaseInitialized]);
+  }, [webcamRef, onClose, isFirebaseInitialized, performOCR]);
 
   const retake = () => {
     setImgSrc(null);
