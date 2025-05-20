@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   collection,
   query,
@@ -8,32 +8,47 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
+  doc,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase-init";
 import Link from "next/link";
 import ErrorBoundary from "../components/ErrorBoundary";
 
 export default function AnalyticsPage() {
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [totalTransactions, setTotalTransactions] = useState(0);
-  const [totalExpenses, setTotalExpenses] = useState(0);
-  const [totalProfit, setTotalProfit] = useState(0);
-  const [recentReceipts, setRecentReceipts] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState({
+    totalRevenue: 0,
+    totalTransactions: 0,
+    totalExpenses: 0,
+    totalProfit: 0,
+    recentReceipts: [],
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [newExpense, setNewExpense] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Memoize the query to prevent unnecessary re-renders
+  const receiptsQuery = useMemo(
+    () => query(collection(db, "receipts"), orderBy("timestamp", "desc")),
+    []
+  );
+
+  const expensesQuery = useMemo(
+    () => query(collection(db, "expenses"), orderBy("timestamp", "desc")),
+    []
+  );
+
   useEffect(() => {
     setLoading(true);
     setError(null);
 
-    // Use real-time listeners for receipts
+    // Use real-time listeners with optimized data fetching
     const receiptsUnsubscribe = onSnapshot(
-      query(collection(db, "receipts"), orderBy("timestamp", "desc")),
+      receiptsQuery,
       (snapshot) => {
-        let revenue = 0;
         const receipts = [];
+        let revenue = 0;
 
         snapshot.forEach((doc) => {
           const data = doc.data();
@@ -44,9 +59,13 @@ export default function AnalyticsPage() {
           });
         });
 
-        setTotalRevenue(revenue);
-        setTotalTransactions(receipts.length);
-        setRecentReceipts(receipts.slice(0, 2));
+        setAnalyticsData((prev) => ({
+          ...prev,
+          totalRevenue: revenue,
+          totalTransactions: receipts.length,
+          recentReceipts: receipts.slice(0, 2),
+          totalProfit: revenue - prev.totalExpenses,
+        }));
         setLoading(false);
       },
       (err) => {
@@ -56,9 +75,8 @@ export default function AnalyticsPage() {
       }
     );
 
-    // Use real-time listener for expenses
     const expensesUnsubscribe = onSnapshot(
-      query(collection(db, "expenses"), orderBy("timestamp", "desc")),
+      expensesQuery,
       (snapshot) => {
         let expenses = 0;
         snapshot.forEach((doc) => {
@@ -66,8 +84,11 @@ export default function AnalyticsPage() {
           expenses += data.amount || 0;
         });
 
-        setTotalExpenses(expenses);
-        setTotalProfit(totalRevenue - expenses);
+        setAnalyticsData((prev) => ({
+          ...prev,
+          totalExpenses: expenses,
+          totalProfit: prev.totalRevenue - expenses,
+        }));
       },
       (err) => {
         console.error("Error fetching expenses:", err);
@@ -75,12 +96,11 @@ export default function AnalyticsPage() {
       }
     );
 
-    // Cleanup listeners on unmount
     return () => {
       receiptsUnsubscribe();
       expensesUnsubscribe();
     };
-  }, [totalRevenue]); // Only depend on totalRevenue for profit calculation
+  }, [receiptsQuery, expensesQuery]);
 
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
@@ -95,8 +115,6 @@ export default function AnalyticsPage() {
       setError(null);
 
       const expenseAmount = parseFloat(newExpense);
-
-      // Add new expense record
       await addDoc(collection(db, "expenses"), {
         amount: expenseAmount,
         timestamp: serverTimestamp(),
@@ -185,7 +203,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                RM {totalRevenue.toFixed(2)}
+                RM {analyticsData.totalRevenue.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
@@ -213,7 +231,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                RM {totalExpenses.toFixed(2)}
+                RM {analyticsData.totalExpenses.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
@@ -241,7 +259,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                RM {totalProfit.toFixed(2)}
+                RM {analyticsData.totalProfit.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
@@ -269,7 +287,7 @@ export default function AnalyticsPage() {
                 </h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {totalTransactions}
+                {analyticsData.totalTransactions}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
@@ -330,7 +348,7 @@ export default function AnalyticsPage() {
               </Link>
             </div>
             <div className="space-y-4">
-              {recentReceipts.map((receipt) => (
+              {analyticsData.recentReceipts.map((receipt) => (
                 <div
                   key={receipt.id}
                   className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg"
