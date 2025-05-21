@@ -348,13 +348,9 @@ export default function AnalyticsPage() {
               {analyticsData.recentReceipts.map((receipt) => (
                 <div
                   key={receipt.id}
-                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg"
+                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-<<<<<<< HEAD
-                  <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
-=======
                   <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
->>>>>>> parent of 012a032 (handled build errors)
                     <img
                       src={receipt.imageUrl}
                       alt="Receipt"
