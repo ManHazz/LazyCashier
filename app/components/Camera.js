@@ -7,6 +7,7 @@ import { app, db } from "../../firebase/firebase-init";
 
 const Camera = ({ onClose }) => {
   const webcamRef = useRef(null);
+  const fileInputRef = useRef(null);
   const [imgSrc, setImgSrc] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
@@ -16,6 +17,7 @@ const Camera = ({ onClose }) => {
   const [showPriceConfirmation, setShowPriceConfirmation] = useState(false);
   const [confirmedPrice, setConfirmedPrice] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGalleryMode, setIsGalleryMode] = useState(false);
 
   useEffect(() => {
     // Check if Firebase is properly initialized
@@ -231,17 +233,108 @@ const Camera = ({ onClose }) => {
     setShowPriceConfirmation(false);
   };
 
+  const handleGallerySelect = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image size should be less than 10MB");
+      return;
+    }
+
+    setIsProcessing(true);
+    setError(null);
+    setDetectedText(null);
+    setDetectedPrice(null);
+    setConfirmedPrice(null);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const imageSrc = e.target.result;
+        setImgSrc(imageSrc);
+
+        try {
+          const text = await performOCR(imageSrc);
+          setDetectedText(text);
+
+          const pricePatterns = [
+            /RM\s*(\d+\.?\d*)/i,
+            /(\d+\.?\d*)\s*RM/i,
+            /Total\s*:?\s*RM\s*(\d+\.?\d*)/i,
+            /Total\s*:?\s*(\d+\.?\d*)/i,
+            /(\d+\.?\d*)/,
+          ];
+
+          let price = null;
+          for (const pattern of pricePatterns) {
+            const match = text.match(pattern);
+            if (match) {
+              price = parseFloat(match[1]);
+              break;
+            }
+          }
+
+          if (!price) {
+            setError(
+              "Could not detect price in the receipt. Please try again with a clearer image."
+            );
+            setIsProcessing(false);
+            return;
+          }
+
+          setDetectedPrice(price);
+          setConfirmedPrice(price);
+          setShowPriceConfirmation(true);
+        } catch (err) {
+          console.error("OCR Error:", err);
+          setError("Error processing image: " + err.message);
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+
+      reader.onerror = () => {
+        setError("Error reading the image file");
+        setIsProcessing(false);
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("File reading error:", err);
+      setError("Error reading the image file");
+      setIsProcessing(false);
+    }
+  };
+
+  const toggleMode = () => {
+    setIsGalleryMode(!isGalleryMode);
+    setImgSrc(null);
+    setError(null);
+    setDetectedText(null);
+    setDetectedPrice(null);
+    setConfirmedPrice(null);
+    setShowPriceConfirmation(false);
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl">
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">
-              Take Receipt Photo
+              {isGalleryMode ? "Select Receipt Photo" : "Take Receipt Photo"}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
               {!imgSrc
-                ? "Position the receipt within the frame"
+                ? isGalleryMode
+                  ? "Choose a receipt image from your gallery"
+                  : "Position the receipt within the frame"
                 : "Review your capture"}
             </p>
           </div>
@@ -289,24 +382,61 @@ const Camera = ({ onClose }) => {
         <div className="relative aspect-[4/3] mb-6 bg-gray-100 rounded-lg overflow-hidden">
           {!imgSrc ? (
             <>
-              <Webcam
-                ref={webcamRef}
-                screenshotFormat="image/jpeg"
-                className="w-full h-full object-cover"
-                videoConstraints={{
-                  facingMode: "environment",
-                }}
-              />
-              {/* Camera Frame Guide */}
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute inset-4 border-2 border-white border-dashed rounded-lg opacity-75"></div>
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-50 text-white px-4 py-2 rounded-full text-sm">
-                  Align receipt within frame
+              {!isGalleryMode ? (
+                <>
+                  <Webcam
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    className="w-full h-full object-cover"
+                    videoConstraints={{
+                      facingMode: "environment",
+                    }}
+                  />
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute inset-4 border-2 border-white border-dashed rounded-lg opacity-75"></div>
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-50 text-white px-4 py-2 rounded-full text-sm">
+                      Align receipt within frame
+                    </div>
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-50 text-white px-4 py-2 rounded-full text-sm">
+                      Make sure price is visible
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-6">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleGallerySelect}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center gap-4 p-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition-colors"
+                  >
+                    <svg
+                      className="w-12 h-12 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-gray-600 font-medium">
+                      Click to select image
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      Supports JPG, PNG up to 10MB
+                    </span>
+                  </button>
                 </div>
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-50 text-white px-4 py-2 rounded-full text-sm">
-                  Make sure price is visible
-                </div>
-              </div>
+              )}
             </>
           ) : (
             <img
@@ -393,56 +523,82 @@ const Camera = ({ onClose }) => {
         {!showPriceConfirmation && (
           <div className="flex justify-center gap-4">
             {!imgSrc ? (
-              <button
-                onClick={capture}
-                disabled={isProcessing || !isFirebaseInitialized}
-                className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-              >
-                {isProcessing ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                    </svg>
-                    Take Photo
-                  </>
+              <>
+                <button
+                  onClick={toggleMode}
+                  className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors font-medium"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                  {isGalleryMode ? "Switch to Camera" : "Choose from Gallery"}
+                </button>
+                {!isGalleryMode && (
+                  <button
+                    onClick={capture}
+                    disabled={isProcessing || !isFirebaseInitialized}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <svg
+                          className="animate-spin h-5 w-5"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            fill="none"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                        Take Photo
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
+              </>
             ) : (
               <button
                 onClick={retake}
