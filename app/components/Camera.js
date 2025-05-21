@@ -46,7 +46,6 @@ const Camera = ({ onClose }) => {
   const compressImage = useCallback(async (imageSrc) => {
     return new Promise((resolve) => {
       const img = new Image();
-      img.src = imageSrc;
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const MAX_WIDTH = 800;
@@ -72,13 +71,23 @@ const Camera = ({ onClose }) => {
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL("image/jpeg", 0.7));
       };
+      img.onerror = () => {
+        console.error("Error loading image for compression");
+        resolve(imageSrc); // Fallback to original image if compression fails
+      };
+      img.src = imageSrc;
     });
   }, []);
 
   const blobToBase64 = (blob) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
+      reader.onload = () => {
+        const base64String = reader.result;
+        // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+        const base64 = base64String.split(",")[1];
+        resolve(base64);
+      };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
@@ -101,20 +110,19 @@ const Camera = ({ onClose }) => {
         formData.append("OCREngine", "2");
         formData.append("filetype", "jpg");
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-        const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
+        const response = await fetch("https://api.ocr.space/parse/image", {
           method: "POST",
           body: formData,
-          signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
-        const result = await ocrResponse.json();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
 
         if (result.IsErroredOnProcessing) {
-          throw new Error(result.ErrorMessage);
+          throw new Error(result.ErrorMessage || "OCR processing failed");
         }
 
         if (!result.ParsedResults || result.ParsedResults.length === 0) {

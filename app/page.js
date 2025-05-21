@@ -29,7 +29,6 @@ export default function Home() {
           quality={100}
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-br from-orange-100/50 via-red-50/50 to-pink-100/50" />
       <main className="relative h-full flex items-center justify-center">
         <div className="w-full max-w-sm px-4 sm:px-6 md:px-8">
           <div className="flex flex-col items-center justify-center w-full gap-6">
