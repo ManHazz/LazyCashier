@@ -100,7 +100,7 @@ const Camera = ({ onClose }) => {
         formData.append("apikey", "K89690044888957");
         formData.append("language", "eng");
         formData.append("isOverlayRequired", "false");
-        formData.append("base64Image", await blobToBase64(blob));
+        formData.append("base64Image", compressedImage.split(",")[1]);
         formData.append("detectOrientation", "true");
         formData.append("scale", "true");
         formData.append("OCREngine", "2");
