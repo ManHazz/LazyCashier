@@ -88,28 +88,36 @@ const Camera = ({ onClose }) => {
     async (imageSrc) => {
       try {
         const compressedImage = await compressImage(imageSrc);
-        const formData = new FormData();
-        formData.append("image", compressedImage.split(",")[1]);
+        const base64Data = compressedImage.split(",")[1];
 
+        console.log("Sending OCR request...");
         const response = await fetch("/api/ocr", {
           method: "POST",
-          body: formData,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            image: base64Data,
+          }),
         });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
 
         const result = await response.json();
 
-        if (result.error) {
-          throw new Error(result.error);
+        if (!response.ok) {
+          console.error("OCR API Error:", result);
+          throw new Error(
+            result.error || `HTTP error! status: ${response.status}`
+          );
+        }
+
+        if (!result.text) {
+          throw new Error("No text detected in the image");
         }
 
         return result.text;
       } catch (error) {
         console.error("OCR Error:", error);
-        throw error;
+        throw new Error(`OCR processing failed: ${error.message}`);
       }
     },
     [compressImage]
