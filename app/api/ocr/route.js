@@ -7,47 +7,26 @@ export async function POST(request) {
     // Log the incoming request
     console.log("Received OCR request");
 
-    // Get the raw request body
-    const body = await request.text();
-    console.log("Request body type:", typeof body);
+    const formData = await request.formData();
+    const imageFile = formData.get("image");
 
-    // Parse the body as JSON
-    let data;
-    try {
-      data = JSON.parse(body);
-    } catch (e) {
-      console.error("Failed to parse request body:", e);
+    if (!imageFile) {
+      console.error("No image file provided");
       return NextResponse.json(
-        { error: "Invalid request format" },
+        { error: "No image file provided" },
         { status: 400 }
       );
     }
 
-    const imageData = data.image;
-    if (!imageData) {
-      console.error("No image data provided");
-      return NextResponse.json(
-        { error: "No image data provided" },
-        { status: 400 }
-      );
-    }
-
-    // Extract the base64 part from the data URL
-    const base64Match = imageData.match(/^data:image\/\w+;base64,(.+)$/);
-    if (!base64Match) {
-      console.error("Invalid base64 image format");
-      return NextResponse.json(
-        { error: "Invalid base64 image format" },
-        { status: 400 }
-      );
-    }
-
-    const base64Image = base64Match[1];
+    // Convert the file to base64
+    const arrayBuffer = await imageFile.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64Image = buffer.toString("base64");
 
     // Log the API key status (not the actual key)
     console.log("API Key present:", !!process.env.OCR_SPACE_API_KEY);
 
-    // Create URLSearchParams instead of FormData
+    // Create URLSearchParams for OCR.space API
     const params = new URLSearchParams();
     params.append("apikey", process.env.OCR_SPACE_API_KEY || "");
     params.append("language", "eng");
