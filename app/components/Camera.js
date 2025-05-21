@@ -20,7 +20,6 @@ const Camera = ({ onClose }) => {
   const [isGalleryMode, setIsGalleryMode] = useState(false);
 
   useEffect(() => {
-    // Check if Firebase is properly initialized
     if (!app || !db) {
       setError(
         "Firebase is not properly initialized. Please check your configuration."
@@ -72,56 +71,55 @@ const Camera = ({ onClose }) => {
     });
   }, []);
 
-  const blobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  const blobToBase64 = (blob, callback) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = reader.result;
+      callback(base64String.split(",")[1]);
+    };
+    reader.onerror = (error) => {
+      console.error("Error reading blob:", error);
+      callback(null);
+    };
+    reader.readAsDataURL(blob);
   };
 
   const performOCR = useCallback(
     async (imageSrc) => {
       try {
         const compressedImage = await compressImage(imageSrc);
-        const imageResponse = await fetch(compressedImage);
-        const blob = await imageResponse.blob();
 
+        // Convert base64 to Blob
+        const response = await fetch(compressedImage);
+        const blob = await response.blob();
+
+        // Create FormData with the blob
         const formData = new FormData();
-        formData.append("apikey", "K89690044888957");
-        formData.append("language", "eng");
-        formData.append("isOverlayRequired", "false");
-        formData.append("base64Image", await blobToBase64(blob));
-        formData.append("detectOrientation", "true");
-        formData.append("scale", "true");
-        formData.append("OCREngine", "2");
-        formData.append("filetype", "jpg");
+        formData.append("image", blob, "receipt.jpg");
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-        const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
+        console.log("Sending OCR request...");
+        const ocrResponse = await fetch("/api/ocr", {
           method: "POST",
           body: formData,
-          signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
         const result = await ocrResponse.json();
 
-        if (result.IsErroredOnProcessing) {
-          throw new Error(result.ErrorMessage);
+        if (!ocrResponse.ok) {
+          console.error("OCR API Error:", result);
+          throw new Error(
+            result.error || `HTTP error! status: ${ocrResponse.status}`
+          );
         }
 
-        if (!result.ParsedResults || result.ParsedResults.length === 0) {
+        if (!result.text) {
           throw new Error("No text detected in the image");
         }
 
-        return result.ParsedResults[0].ParsedText;
+        return result.text;
       } catch (error) {
         console.error("OCR Error:", error);
-        throw error;
+        throw new Error(`OCR processing failed: ${error.message}`);
       }
     },
     [compressImage]
@@ -140,7 +138,6 @@ const Camera = ({ onClose }) => {
       setIsUploading(true);
       const compressedImage = await compressImage(imgSrc);
 
-      // Optimize the data being sent to Firestore
       const receiptData = {
         imageData: compressedImage,
         price: confirmedPrice,
@@ -149,13 +146,11 @@ const Camera = ({ onClose }) => {
         imageUrl: `data:image/jpeg;base64,${compressedImage.split(",")[1]}`,
       };
 
-      // Remove original image data to reduce payload size
       delete receiptData.originalImageData;
       delete receiptData.originalImageUrl;
 
       const docRef = await addDoc(collection(db, "receipts"), receiptData);
       console.log("Document saved with ID:", docRef.id);
-
       onClose();
     } catch (firebaseError) {
       console.error("Firebase Error:", firebaseError);

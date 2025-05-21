@@ -16,8 +16,7 @@ A modern receipt management system that helps businesses track their revenue, ex
 - **Frontend**: Next.js, Tailwind CSS
 - **Backend**: Python (FastAPI)
 - **Database**: Firebase Firestore
-- **Storage**: Firebase Storage
-- **Authentication**: Firebase Auth
+- **OCR Service**: OCR.Space 
 
 ## Getting Started
 
