@@ -20,7 +20,6 @@ const Camera = ({ onClose }) => {
   const [isGalleryMode, setIsGalleryMode] = useState(false);
 
   useEffect(() => {
-    // Check if Firebase is properly initialized
     if (!app || !db) {
       setError(
         "Firebase is not properly initialized. Please check your configuration."
@@ -90,16 +89,9 @@ const Camera = ({ onClose }) => {
       try {
         const compressedImage = await compressImage(imageSrc);
         const formData = new FormData();
-        formData.append("apikey", "K89690044888957");
-        formData.append("language", "eng");
-        formData.append("isOverlayRequired", "false");
-        formData.append("base64Image", compressedImage.split(",")[1]);
-        formData.append("detectOrientation", "true");
-        formData.append("scale", "true");
-        formData.append("OCREngine", "2");
-        formData.append("filetype", "jpg");
+        formData.append("image", compressedImage.split(",")[1]);
 
-        const response = await fetch("https://api.ocr.space/parse/image", {
+        const response = await fetch("/api/ocr", {
           method: "POST",
           body: formData,
         });
@@ -110,15 +102,11 @@ const Camera = ({ onClose }) => {
 
         const result = await response.json();
 
-        if (result.IsErroredOnProcessing) {
-          throw new Error(result.ErrorMessage || "OCR processing failed");
+        if (result.error) {
+          throw new Error(result.error);
         }
 
-        if (!result.ParsedResults || result.ParsedResults.length === 0) {
-          throw new Error("No text detected in the image");
-        }
-
-        return result.ParsedResults[0].ParsedText;
+        return result.text;
       } catch (error) {
         console.error("OCR Error:", error);
         throw error;
@@ -140,7 +128,6 @@ const Camera = ({ onClose }) => {
       setIsUploading(true);
       const compressedImage = await compressImage(imgSrc);
 
-      // Optimize the data being sent to Firestore
       const receiptData = {
         imageData: compressedImage,
         price: confirmedPrice,
@@ -149,13 +136,11 @@ const Camera = ({ onClose }) => {
         imageUrl: `data:image/jpeg;base64,${compressedImage.split(",")[1]}`,
       };
 
-      // Remove original image data to reduce payload size
       delete receiptData.originalImageData;
       delete receiptData.originalImageUrl;
 
       const docRef = await addDoc(collection(db, "receipts"), receiptData);
       console.log("Document saved with ID:", docRef.id);
-
       onClose();
     } catch (firebaseError) {
       console.error("Firebase Error:", firebaseError);
@@ -237,13 +222,11 @@ const Camera = ({ onClose }) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       setError("Please select an image file");
       return;
     }
 
-    // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       setError("Image size should be less than 10MB");
       return;
@@ -394,7 +377,6 @@ const Camera = ({ onClose }) => {
                       facingMode: "environment",
                     }}
                   />
-                  {/* Camera Frame Guide */}
                   <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute inset-4 border-2 border-white border-dashed rounded-lg opacity-75"></div>
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-50 text-white px-4 py-2 rounded-full text-sm">
