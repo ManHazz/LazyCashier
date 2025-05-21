@@ -85,14 +85,12 @@ const Camera = ({ onClose }) => {
     async (imageSrc) => {
       try {
         const compressedImage = await compressImage(imageSrc);
-        const imageResponse = await fetch(compressedImage);
-        const blob = await imageResponse.blob();
 
         const formData = new FormData();
         formData.append("apikey", "K89690044888957");
         formData.append("language", "eng");
         formData.append("isOverlayRequired", "false");
-        formData.append("base64Image", await blobToBase64(blob));
+        formData.append("base64Image", compressedImage.split(",")[1]); // Extract only the base64 content
         formData.append("detectOrientation", "true");
         formData.append("scale", "true");
         formData.append("OCREngine", "2");
