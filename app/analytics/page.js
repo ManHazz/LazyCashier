@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   collection,
   query,
@@ -8,8 +8,6 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-  doc,
-  writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase-init";
 import Link from "next/link";
@@ -28,79 +26,76 @@ export default function AnalyticsPage() {
   const [newExpense, setNewExpense] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Memoize the query to prevent unnecessary re-renders
-  const receiptsQuery = useMemo(
-    () => query(collection(db, "receipts"), orderBy("timestamp", "desc")),
-    []
-  );
-
-  const expensesQuery = useMemo(
-    () => query(collection(db, "expenses"), orderBy("timestamp", "desc")),
-    []
-  );
-
   useEffect(() => {
     setLoading(true);
     setError(null);
 
-    // Use real-time listeners with optimized data fetching
-    const receiptsUnsubscribe = onSnapshot(
-      receiptsQuery,
-      (snapshot) => {
-        const receipts = [];
-        let revenue = 0;
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          revenue += data.price || 0;
-          receipts.push({
-            id: doc.id,
-            ...data,
-          });
-        });
-
-        setAnalyticsData((prev) => ({
-          ...prev,
-          totalRevenue: revenue,
-          totalTransactions: receipts.length,
-          recentReceipts: receipts.slice(0, 2),
-          totalProfit: revenue - prev.totalExpenses,
-        }));
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Error fetching receipts:", err);
-        setError("Failed to load receipts data");
-        setLoading(false);
-      }
+    // Combine queries into a single listener for better performance
+    const receiptsQuery = query(
+      collection(db, "receipts"),
+      orderBy("timestamp", "desc")
+    );
+    const expensesQuery = query(
+      collection(db, "expenses"),
+      orderBy("timestamp", "desc")
     );
 
-    const expensesUnsubscribe = onSnapshot(
-      expensesQuery,
-      (snapshot) => {
-        let expenses = 0;
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          expenses += data.amount || 0;
-        });
-
-        setAnalyticsData((prev) => ({
-          ...prev,
-          totalExpenses: expenses,
-          totalProfit: prev.totalRevenue - expenses,
-        }));
-      },
-      (err) => {
-        console.error("Error fetching expenses:", err);
-        setError("Failed to load expenses data");
-      }
-    );
-
-    return () => {
-      receiptsUnsubscribe();
-      expensesUnsubscribe();
-    };
-  }, [receiptsQuery, expensesQuery]);
+    // Use Promise.all to fetch both collections simultaneously
+    Promise.all([
+      new Promise((resolve) => {
+        const unsubscribe = onSnapshot(
+          receiptsQuery,
+          (snapshot) => {
+            let revenue = 0;
+            const receipts = [];
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              revenue += data.price || 0;
+              receipts.push({
+                id: doc.id,
+                ...data,
+              });
+            });
+            resolve({ revenue, receipts });
+          },
+          (err) => {
+            console.error("Error fetching receipts:", err);
+            setError("Failed to load receipts data");
+            resolve({ revenue: 0, receipts: [] });
+          }
+        );
+        return unsubscribe;
+      }),
+      new Promise((resolve) => {
+        const unsubscribe = onSnapshot(
+          expensesQuery,
+          (snapshot) => {
+            let expenses = 0;
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              expenses += data.amount || 0;
+            });
+            resolve({ expenses });
+          },
+          (err) => {
+            console.error("Error fetching expenses:", err);
+            setError("Failed to load expenses data");
+            resolve({ expenses: 0 });
+          }
+        );
+        return unsubscribe;
+      }),
+    ]).then(([{ revenue, receipts }, { expenses }]) => {
+      setAnalyticsData({
+        totalRevenue: revenue,
+        totalTransactions: receipts.length,
+        totalExpenses: expenses,
+        totalProfit: revenue - expenses,
+        recentReceipts: receipts.slice(0, 2),
+      });
+      setLoading(false);
+    });
+  }, []); // Remove totalRevenue dependency
 
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
@@ -115,6 +110,8 @@ export default function AnalyticsPage() {
       setError(null);
 
       const expenseAmount = parseFloat(newExpense);
+
+      // Add new expense record
       await addDoc(collection(db, "expenses"), {
         amount: expenseAmount,
         timestamp: serverTimestamp(),
