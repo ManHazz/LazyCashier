@@ -88,12 +88,10 @@ const Camera = ({ onClose }) => {
     async (imageSrc) => {
       try {
         const compressedImage = await compressImage(imageSrc);
-        const imageResponse = await fetch(compressedImage);
-        const blob = await imageResponse.blob();
 
-        // Create FormData with the blob
+        // Create FormData with the base64 image
         const formData = new FormData();
-        formData.append("image", blob, "receipt.jpg");
+        formData.append("image", compressedImage); // This already includes the data:image/jpeg;base64, prefix
 
         console.log("Sending OCR request...");
         const ocrResponse = await fetch("/api/ocr", {
