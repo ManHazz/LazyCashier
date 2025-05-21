@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { app, db } from "../../firebase/firebase-init";
+import Image from "next/image";
 
 const Camera = ({ onClose }) => {
   const webcamRef = useRef(null);
@@ -43,7 +44,6 @@ const Camera = ({ onClose }) => {
   const compressImage = useCallback(async (imageSrc) => {
     return new Promise((resolve) => {
       const img = new Image();
-      img.src = imageSrc;
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const MAX_WIDTH = 800;
@@ -69,6 +69,11 @@ const Camera = ({ onClose }) => {
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL("image/jpeg", 0.7));
       };
+      img.onerror = () => {
+        console.error("Error loading image for compression");
+        resolve(imageSrc);
+      };
+      img.src = imageSrc;
     });
   }, []);
 
@@ -85,40 +90,29 @@ const Camera = ({ onClose }) => {
     async (imageSrc) => {
       try {
         const compressedImage = await compressImage(imageSrc);
-        const imageResponse = await fetch(compressedImage);
-        const blob = await imageResponse.blob();
+        const base64Image = compressedImage.split(",")[1];
 
-        const formData = new FormData();
-        formData.append("apikey", "K89690044888957");
-        formData.append("language", "eng");
-        formData.append("isOverlayRequired", "false");
-        formData.append("base64Image", await blobToBase64(blob));
-        formData.append("detectOrientation", "true");
-        formData.append("scale", "true");
-        formData.append("OCREngine", "2");
-        formData.append("filetype", "jpg");
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-        const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
+        const response = await fetch("/api/vision", {
           method: "POST",
-          body: formData,
-          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            image: base64Image,
+          }),
         });
 
-        clearTimeout(timeoutId);
-        const result = await ocrResponse.json();
-
-        if (result.IsErroredOnProcessing) {
-          throw new Error(result.ErrorMessage);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        if (!result.ParsedResults || result.ParsedResults.length === 0) {
+        const result = await response.json();
+
+        if (!result.text) {
           throw new Error("No text detected in the image");
         }
 
-        return result.ParsedResults[0].ParsedText;
+        return result.text;
       } catch (error) {
         console.error("OCR Error:", error);
         throw error;
