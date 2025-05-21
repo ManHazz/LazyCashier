@@ -15,6 +15,7 @@ import {
 import { db } from "../../firebase/firebase-init";
 import Link from "next/link";
 import ErrorBoundary from "../components/ErrorBoundary";
+import DeleteConfirmation from "../components/DeleteConfirmation";
 
 export default function AnalyticsPage() {
   const [analyticsData, setAnalyticsData] = useState({
