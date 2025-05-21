@@ -8,9 +8,6 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-  deleteDoc,
-  doc,
-  getDocs,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase-init";
 import Link from "next/link";
@@ -30,8 +27,6 @@ export default function AnalyticsPage() {
   const [error, setError] = useState(null);
   const [newExpense, setNewExpense] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [selectedReceiptId, setSelectedReceiptId] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -118,20 +113,8 @@ export default function AnalyticsPage() {
 
       const expenseAmount = parseFloat(newExpense);
 
-      // Get the expenses collection reference
-      const expensesRef = collection(db, "expenses");
-
-      // Get all existing expense documents
-      const expensesSnapshot = await getDocs(expensesRef);
-
-      // Delete all existing expense documents
-      const deletePromises = expensesSnapshot.docs.map((doc) =>
-        deleteDoc(doc.ref)
-      );
-      await Promise.all(deletePromises);
-
-      // Add the new total expense
-      await addDoc(expensesRef, {
+      // Add new expense record
+      await addDoc(collection(db, "expenses"), {
         amount: expenseAmount,
         timestamp: serverTimestamp(),
         type: "total",
@@ -139,38 +122,11 @@ export default function AnalyticsPage() {
 
       setNewExpense("");
     } catch (err) {
-      console.error("Error updating expense:", err);
+      console.error("Error adding expense:", err);
       setError("Failed to update expenses");
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleDeleteReceipt = async (receiptId) => {
-    if (!receiptId) {
-      console.error("No receipt ID provided for deletion");
-      return;
-    }
-
-    try {
-      const receiptRef = doc(db, "receipts", receiptId);
-      await deleteDoc(receiptRef);
-      console.log("Receipt deleted successfully:", receiptId);
-    } catch (error) {
-      console.error("Error deleting receipt:", error);
-      throw error;
-    }
-  };
-
-  const openDeleteModal = (receiptId) => {
-    console.log("Opening delete modal for receipt:", receiptId);
-    setSelectedReceiptId(receiptId);
-    setDeleteModalOpen(true);
-  };
-
-  const closeDeleteModal = () => {
-    setDeleteModalOpen(false);
-    setSelectedReceiptId(null);
   };
 
   if (loading) {
@@ -277,9 +233,9 @@ export default function AnalyticsPage() {
                 RM {analyticsData.totalExpenses.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
                   <svg
-                    className="w-10 h-10 text-green-600"
+                    className="w-10 h-10 text-red-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -305,9 +261,9 @@ export default function AnalyticsPage() {
                 RM {analyticsData.totalProfit.toFixed(2)}
               </p>
               <div className="absolute top-1/2 -translate-y-1/2 right-6">
-                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
                   <svg
-                    className="w-10 h-10 text-pink-600"
+                    className="w-10 h-10 text-green-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -394,54 +350,28 @@ export default function AnalyticsPage() {
               {analyticsData.recentReceipts.map((receipt) => (
                 <div
                   key={receipt.id}
-                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg"
                 >
-                  <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 relative">
-                    <Image
+                  <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
+                    <img
                       src={receipt.imageUrl}
                       alt="Receipt"
                       fill
                       className="object-cover"
                     />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-500 truncate">
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500">
                       {receipt.timestamp?.toDate().toLocaleString()}
                     </p>
                     <p className="font-medium text-gray-900">
                       RM {receipt.price?.toFixed(2)}
                     </p>
                   </div>
-                  <button
-                    onClick={() => openDeleteModal(receipt.id)}
-                    className="p-2 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
-                    title="Delete receipt"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
                 </div>
               ))}
             </div>
           </div>
-
-          <DeleteConfirmation
-            isOpen={deleteModalOpen}
-            onClose={closeDeleteModal}
-            onConfirm={handleDeleteReceipt}
-            receiptId={selectedReceiptId}
-          />
         </div>
       </div>
     </ErrorBoundary>

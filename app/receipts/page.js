@@ -1,25 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  collection,
-  query,
-  orderBy,
-  getDocs,
-  deleteDoc,
-  doc,
-} from "firebase/firestore";
+import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebase-init";
 import Link from "next/link";
-import DeleteConfirmation from "../components/DeleteConfirmation";
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [selectedReceiptId, setSelectedReceiptId] = useState(null);
 
   useEffect(() => {
     const fetchReceipts = async () => {
@@ -52,32 +42,6 @@ export default function ReceiptsPage() {
 
     fetchReceipts();
   }, []);
-
-  const handleDeleteReceipt = async () => {
-    if (!selectedReceiptId) return;
-
-    try {
-      const receiptRef = doc(db, "receipts", selectedReceiptId);
-      await deleteDoc(receiptRef);
-      setReceipts(
-        receipts.filter((receipt) => receipt.id !== selectedReceiptId)
-      );
-      setDeleteModalOpen(false);
-    } catch (error) {
-      console.error("Error deleting receipt:", error);
-      setError("Failed to delete receipt");
-    }
-  };
-
-  const openDeleteModal = (receiptId) => {
-    setSelectedReceiptId(receiptId);
-    setDeleteModalOpen(true);
-  };
-
-  const closeDeleteModal = () => {
-    setDeleteModalOpen(false);
-    setSelectedReceiptId(null);
-  };
 
   if (loading) {
     return (
@@ -179,7 +143,7 @@ export default function ReceiptsPage() {
             {receipts.map((receipt) => (
               <div
                 key={receipt.id}
-                className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg"
               >
                 <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
                   <img
@@ -196,63 +160,35 @@ export default function ReceiptsPage() {
                     RM {receipt.price?.toFixed(2)}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => window.open(receipt.imageUrl, "_blank")}
-                    className="px-2 py-1 text-blue-600 hover:text-orange-700 font-medium flex items-center gap-2"
+                <button
+                  onClick={() => window.open(receipt.imageUrl, "_blank")}
+                  className="px-2 py-1 text-blue-600 hover:text-orange-700 font-medium flex items-center gap-2"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
                   >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                      />
-                    </svg>
-                    View Full Image
-                  </button>
-                  <button
-                    onClick={() => openDeleteModal(receipt.id)}
-                    className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                    title="Delete receipt"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                </div>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                  View Full Image
+                </button>
               </div>
             ))}
           </div>
         </div>
-
-        <DeleteConfirmation
-          isOpen={deleteModalOpen}
-          onClose={closeDeleteModal}
-          onConfirm={handleDeleteReceipt}
-          receipt={receipts.find((r) => r.id === selectedReceiptId)}
-        />
       </div>
     </div>
   );
