@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase-init";
 import Link from "next/link";
+import Image from "next/image";
 import ErrorBoundary from "../components/ErrorBoundary";
 import DeleteConfirmation from "../components/DeleteConfirmation";
 
@@ -395,11 +396,12 @@ export default function AnalyticsPage() {
                   key={receipt.id}
                   className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-                  <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                    <img
+                  <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 relative">
+                    <Image
                       src={receipt.imageUrl}
                       alt="Receipt"
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                   </div>
                   <div className="flex-1 min-w-0">

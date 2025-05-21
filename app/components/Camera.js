@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { app, db } from "../../firebase/firebase-init";
+import Image from "next/image";
 
 const Camera = ({ onClose }) => {
   const webcamRef = useRef(null);
@@ -18,6 +19,8 @@ const Camera = ({ onClose }) => {
   const [confirmedPrice, setConfirmedPrice] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isGalleryMode, setIsGalleryMode] = useState(false);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
 
   useEffect(() => {
     // Check if Firebase is properly initialized
@@ -43,7 +46,6 @@ const Camera = ({ onClose }) => {
   const compressImage = useCallback(async (imageSrc) => {
     return new Promise((resolve) => {
       const img = new Image();
-      img.src = imageSrc;
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const MAX_WIDTH = 800;
@@ -69,13 +71,23 @@ const Camera = ({ onClose }) => {
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL("image/jpeg", 0.7));
       };
+      img.onerror = () => {
+        console.error("Error loading image for compression");
+        resolve(imageSrc); // Fallback to original image if compression fails
+      };
+      img.src = imageSrc;
     });
   }, []);
 
   const blobToBase64 = (blob) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
+      reader.onload = () => {
+        const base64String = reader.result;
+        // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+        const base64 = base64String.split(",")[1];
+        resolve(base64);
+      };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
@@ -98,20 +110,19 @@ const Camera = ({ onClose }) => {
         formData.append("OCREngine", "2");
         formData.append("filetype", "jpg");
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-        const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
+        const response = await fetch("https://api.ocr.space/parse/image", {
           method: "POST",
           body: formData,
-          signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
-        const result = await ocrResponse.json();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
 
         if (result.IsErroredOnProcessing) {
-          throw new Error(result.ErrorMessage);
+          throw new Error(result.ErrorMessage || "OCR processing failed");
         }
 
         if (!result.ParsedResults || result.ParsedResults.length === 0) {
@@ -323,6 +334,23 @@ const Camera = ({ onClose }) => {
     setConfirmedPrice(null);
     setShowPriceConfirmation(false);
   };
+
+  const handleCapture = useCallback(() => {
+    if (webcamRef.current && capturedImage) {
+      const context = webcamRef.current.getCanvas().getContext("2d");
+      webcamRef.current.getCanvas().width = webcamRef.current.videoWidth;
+      webcamRef.current.getCanvas().height = webcamRef.current.videoHeight;
+      context.drawImage(
+        webcamRef.current,
+        0,
+        0,
+        webcamRef.current.getCanvas().width,
+        webcamRef.current.getCanvas().height
+      );
+      setCapturedImage(webcamRef.current.getCanvas().toDataURL("image/jpeg"));
+      setShowCamera(false);
+    }
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
@@ -623,6 +651,41 @@ const Camera = ({ onClose }) => {
                 Retake
               </button>
             )}
+          </div>
+        )}
+
+        {capturedImage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
+            <div className="relative max-w-2xl w-full mx-4">
+              <div className="relative aspect-[4/3] w-full">
+                <Image
+                  src={capturedImage}
+                  alt="Captured receipt"
+                  fill
+                  className="object-contain"
+                />
+              </div>
+              <div className="absolute top-4 right-4">
+                <button
+                  onClick={() => setCapturedImage(null)}
+                  className="p-2 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-colors"
+                >
+                  <svg
+                    className="w-6 h-6 text-gray-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -18,8 +18,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-100 via-red-50 to-pink-100">
-      <div className="fixed inset-0 z-0">
+    <div className="fixed inset-0 overflow-hidden">
+      <div className="absolute inset-0">
         <Image
           src="/narutoxpopia.jpeg"
           alt="Background"
@@ -29,7 +29,7 @@ export default function Home() {
           quality={100}
         />
       </div>
-      <main className="relative z-10 min-h-screen flex items-center justify-center">
+      <main className="relative h-full flex items-center justify-center">
         <div className="w-full max-w-sm px-4 sm:px-6 md:px-8">
           <div className="flex flex-col items-center justify-center w-full gap-6">
             <button
