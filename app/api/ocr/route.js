@@ -32,6 +32,18 @@ export async function POST(request) {
       );
     }
 
+    // Extract the base64 part from the data URL
+    const base64Match = imageData.match(/^data:image\/\w+;base64,(.+)$/);
+    if (!base64Match) {
+      console.error("Invalid base64 image format");
+      return NextResponse.json(
+        { error: "Invalid base64 image format" },
+        { status: 400 }
+      );
+    }
+
+    const base64Image = base64Match[1];
+
     // Log the API key status (not the actual key)
     console.log("API Key present:", !!process.env.OCR_SPACE_API_KEY);
 
@@ -44,7 +56,7 @@ export async function POST(request) {
     params.append("scale", "true");
     params.append("OCREngine", "2");
     params.append("filetype", "jpg");
-    params.append("base64Image", imageData);
+    params.append("base64Image", base64Image);
 
     console.log("Sending request to OCR.space API");
 
