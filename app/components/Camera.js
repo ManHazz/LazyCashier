@@ -72,46 +72,46 @@ const Camera = ({ onClose }) => {
     });
   }, []);
 
-  const blobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  const blobToBase64 = (blob, callback) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = reader.result;
+      callback(base64String.split(",")[1]);
+    };
+    reader.onerror = (error) => {
+      console.error("Error reading blob:", error);
+      callback(null);
+    };
+    reader.readAsDataURL(blob);
   };
 
   const performOCR = useCallback(
     async (imageSrc) => {
       try {
         const compressedImage = await compressImage(imageSrc);
-        const imageResponse = await fetch(compressedImage);
-        const blob = await imageResponse.blob();
-
         const formData = new FormData();
         formData.append("apikey", "K89690044888957");
         formData.append("language", "eng");
         formData.append("isOverlayRequired", "false");
-        formData.append("base64Image", await blobToBase64(blob));
+        formData.append("base64Image", compressedImage.split(",")[1]);
         formData.append("detectOrientation", "true");
         formData.append("scale", "true");
         formData.append("OCREngine", "2");
         formData.append("filetype", "jpg");
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-        const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
+        const response = await fetch("https://api.ocr.space/parse/image", {
           method: "POST",
           body: formData,
-          signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
-        const result = await ocrResponse.json();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
 
         if (result.IsErroredOnProcessing) {
-          throw new Error(result.ErrorMessage);
+          throw new Error(result.ErrorMessage || "OCR processing failed");
         }
 
         if (!result.ParsedResults || result.ParsedResults.length === 0) {
