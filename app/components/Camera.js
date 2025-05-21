@@ -4,7 +4,6 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { app, db } from "../../firebase/firebase-init";
-import Image from "next/image";
 
 const Camera = ({ onClose }) => {
   const webcamRef = useRef(null);
@@ -17,6 +16,7 @@ const Camera = ({ onClose }) => {
   const [showPriceConfirmation, setShowPriceConfirmation] = useState(false);
   const [confirmedPrice, setConfirmedPrice] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGalleryMode, setIsGalleryMode] = useState(false);
 
   useEffect(() => {
     // Check if Firebase is properly initialized
@@ -232,6 +232,97 @@ const Camera = ({ onClose }) => {
   }, [webcamRef, onClose, isFirebaseInitialized, performOCR]);
 
   const retake = () => {
+    setImgSrc(null);
+    setError(null);
+    setDetectedText(null);
+    setDetectedPrice(null);
+    setConfirmedPrice(null);
+    setShowPriceConfirmation(false);
+  };
+
+  const handleGallerySelect = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file");
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image size should be less than 10MB");
+      return;
+    }
+
+    setIsProcessing(true);
+    setError(null);
+    setDetectedText(null);
+    setDetectedPrice(null);
+    setConfirmedPrice(null);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const imageSrc = e.target.result;
+        setImgSrc(imageSrc);
+
+        try {
+          const text = await performOCR(imageSrc);
+          setDetectedText(text);
+
+          const pricePatterns = [
+            /RM\s*(\d+\.?\d*)/i,
+            /(\d+\.?\d*)\s*RM/i,
+            /Total\s*:?\s*RM\s*(\d+\.?\d*)/i,
+            /Total\s*:?\s*(\d+\.?\d*)/i,
+            /(\d+\.?\d*)/,
+          ];
+
+          let price = null;
+          for (const pattern of pricePatterns) {
+            const match = text.match(pattern);
+            if (match) {
+              price = parseFloat(match[1]);
+              break;
+            }
+          }
+
+          if (!price) {
+            setError(
+              "Could not detect price in the receipt. Please try again with a clearer image."
+            );
+            setIsProcessing(false);
+            return;
+          }
+
+          setDetectedPrice(price);
+          setConfirmedPrice(price);
+          setShowPriceConfirmation(true);
+        } catch (err) {
+          console.error("OCR Error:", err);
+          setError("Error processing image: " + err.message);
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+
+      reader.onerror = () => {
+        setError("Error reading the image file");
+        setIsProcessing(false);
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("File reading error:", err);
+      setError("Error reading the image file");
+      setIsProcessing(false);
+    }
+  };
+
+  const toggleMode = () => {
+    setIsGalleryMode(!isGalleryMode);
     setImgSrc(null);
     setError(null);
     setDetectedText(null);
