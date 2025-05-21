@@ -90,8 +90,8 @@ const Camera = ({ onClose }) => {
         const compressedImage = await compressImage(imageSrc);
 
         // Convert base64 to Blob
-        const response = await fetch(compressedImage);
-        const blob = await response.blob();
+        const base64Response = await fetch(compressedImage);
+        const blob = await base64Response.blob();
 
         // Create FormData with the blob
         const formData = new FormData();

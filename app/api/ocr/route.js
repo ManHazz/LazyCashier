@@ -21,7 +21,7 @@ export async function POST(request) {
     // Convert the file to base64
     const arrayBuffer = await imageFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const base64Image = buffer.toString("base64");
+    const base64Image = `data:image/jpeg;base64,${buffer.toString("base64")}`;
 
     // Log the API key status (not the actual key)
     console.log("API Key present:", !!process.env.OCR_SPACE_API_KEY);
@@ -34,7 +34,6 @@ export async function POST(request) {
     params.append("detectOrientation", "true");
     params.append("scale", "true");
     params.append("OCREngine", "2");
-    params.append("filetype", "jpg");
     params.append("base64Image", base64Image);
 
     console.log("Sending request to OCR.space API");
