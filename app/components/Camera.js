@@ -88,7 +88,7 @@ const Camera = ({ onClose }) => {
     async (imageSrc) => {
       try {
         const compressedImage = await compressImage(imageSrc);
-        const base64Data = compressedImage.split(",")[1];
+        const base64Data = compressedImage;
 
         console.log("Sending OCR request...");
         const response = await fetch("/api/ocr", {
